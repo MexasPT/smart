@@ -1,0 +1,79 @@
+<resources>
+    <string name="app_name">NFCGate Sync &amp; Data Vault</string>
+    <string name="app_tagline">Ponte NFC &amp; Transferência Segura de Dados</string>
+
+    <!-- Navigation & Tabs -->
+    <string name="nav_nfc_radar">NFC &amp; Gate</string>
+    <string name="nav_contacts">Contactos</string>
+    <string name="nav_photos">Fotos</string>
+    <string name="nav_vault">Passwords</string>
+    <string name="nav_export">Exportar</string>
+
+    <!-- NFC & Proximity -->
+    <string name="nfc_status_ready">NFC Ativo e Pronto</string>
+    <string name="nfc_status_disabled">NFC Desativado no Dispositivo</string>
+    <string name="nfc_status_not_supported">Dispositivo sem suporte NFC</string>
+    <string name="nfc_radar_title">Aproximação de Smartphone</string>
+    <string name="nfc_radar_desc">Aproxime a traseira deste smartphone de outro dispositivo NFC para iniciar a comunicação ou abrir o NFCGate.</string>
+    <string name="open_nfcgate">Abrir NFCGate</string>
+    <string name="nfcgate_not_installed">NFCGate não encontrado</string>
+    <string name="nfcgate_install_desc">Deseja descarregar o NFCGate (app de relay/emulação NFC)?</string>
+    <string name="btn_download_nfcgate">Obter NFCGate (GitHub/APK)</string>
+    <string name="btn_simulate_nfc_touch">Simular Toque NFC</string>
+    <string name="nfc_beam_mode">Modo Comunicação NFC P2P</string>
+    <string name="nfc_beam_desc">Transmissão ativa de payload estruturado via NDEF / HCE</string>
+
+    <!-- Data Capture -->
+    <string name="btn_capture_all">Captar Todos os Dados</string>
+    <string name="btn_refresh">Atualizar</string>
+    <string name="capture_in_progress">A captar dados do smartphone…</string>
+    <string name="contacts_captured">Contactos captados</string>
+    <string name="photos_captured">Fotos encontradas</string>
+    <string name="passwords_managed">Credenciais no Cofre</string>
+
+    <!-- Permissions -->
+    <string name="permission_contacts_title">Acesso aos Contactos</string>
+    <string name="permission_contacts_desc">Necessário para ler os nomes, telefones e emails para organização e exportação.</string>
+    <string name="permission_photos_title">Acesso à Galeria de Fotos</string>
+    <string name="permission_photos_desc">Necessário para indexar e preparar as fotografias para cópia segura.</string>
+    <string name="btn_grant_permission">Conceder Permissão</string>
+    <string name="permission_granted">Permissão Concedida</string>
+    <string name="permission_denied">Permissão Necessária</string>
+
+    <!-- Contacts Screen -->
+    <string name="search_contacts">Pesquisar contactos...</string>
+    <string name="no_contacts_found">Nenhum contacto encontrado ou permissão pendente.</string>
+    <string name="select_all">Selecionar Todos</string>
+    <string name="deselect_all">Desmarcar</string>
+    <string name="contacts_selected_count">%1$d de %2$d selecionados</string>
+
+    <!-- Photos Screen -->
+    <string name="search_photos">Filtrar fotos...</string>
+    <string name="no_photos_found">Nenhuma fotografia encontrada ou permissão pendente.</string>
+    <string name="photos_selected_count">%1$d fotos selecionadas</string>
+    <string name="sample_photo_desc">Fotografia local</string>
+
+    <!-- Passwords & Vault Screen -->
+    <string name="vault_title">Cofre Seguro de Credenciais</string>
+    <string name="vault_subtitle">Armazenamento com cifra AES-256 e exportação protegida.</string>
+    <string name="vault_add_new">Adicionar Credencial</string>
+    <string name="vault_account_name">Serviço / Conta</string>
+    <string name="vault_username">Utilizador / Email</string>
+    <string name="vault_password">Palavra-passe</string>
+    <string name="vault_category">Categoria</string>
+    <string name="vault_notes">Notas adicionais</string>
+    <string name="vault_empty">Nenhuma palavra-passe guardada ainda.</string>
+    <string name="vault_security_note">O Android protege as passwords de outras aplicações no SO por Sandbox de segurança. Pode gerir, adicionar, importar e exportar com segurança máxima neste cofre cifrado.</string>
+    <string name="btn_generate_password">Gerar Password Forte</string>
+
+    <!-- Export & Security Screen -->
+    <string name="export_title">Exportação Segura e Partilha</string>
+    <string name="export_desc">Selecione os itens e o nível de segurança para exportar ou partilhar com o outro smartphone.</string>
+    <string name="export_format_json">Ficheiro JSON Cifrado (AES-GCM)</string>
+    <string name="export_format_vcard">Ficheiro VCard (.vcf) + Metadados</string>
+    <string name="export_format_full">Pacote Completo de Migração</string>
+    <string name="export_encryption_key">Palavra-chave de Cifra (Opcional)</string>
+    <string name="btn_export_share">Exportar e Partilhar</string>
+    <string name="btn_save_local">Guardar no Armazenamento</string>
+    <string name="export_success">Ficheiro de exportação gerado com sucesso!</string>
+</resources>

@@ -1,0 +1,6 @@
+{
+  "name": "NFCGate Sync & Data Vault",
+  "description": "App para aproximação NFC com integração NFCGate, captura de contactos, fotos e cofre de credenciais com exportação segura.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
