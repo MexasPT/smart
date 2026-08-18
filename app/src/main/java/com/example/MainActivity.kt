@@ -292,6 +292,7 @@ fun MainAppContent(
                             uiState = uiState,
                             onStartScan = { viewModel.startLanScan(fullScan = true) },
                             onStopScan = { viewModel.stopLanScan() },
+                            onSetScanMode = { viewModel.setScanBandMode(it) },
                             onSelectDevice = { viewModel.selectLanDevice(it) },
                             onAddManualDevice = { ip, name, type -> viewModel.addManualLanDevice(ip, name, type) }
                         )

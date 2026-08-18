@@ -26,6 +26,12 @@ import java.net.Socket
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+enum class ScanBandMode(val title: String) {
+    CURRENT_SUBNET("Sub-rede Atual"),
+    DUAL_BAND_ALL("Dual-Band 2.4G & 5G (Todas)"),
+    CUSTOM_SUBNET("Sub-rede Personalizada")
+}
+
 class LanScannerManager(private val context: Context) {
 
     private val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
@@ -78,12 +84,13 @@ class LanScannerManager(private val context: Context) {
                 while (addresses.hasMoreElements()) {
                     val addr = addresses.nextElement()
                     if (!addr.isLoopbackAddress && addr.address.size == 4) {
-                        return addr.hostAddress ?: ""
+                        val host = addr.hostAddress ?: ""
+                        if (host.isNotBlank() && host != "127.0.0.1") return host
                     }
                 }
             }
         } catch (_: Exception) {}
-        return "127.0.0.1"
+        return "192.168.1.100"
     }
 
     fun getSubnetPrefix(): String {
@@ -111,7 +118,7 @@ class LanScannerManager(private val context: Context) {
                 return ssid
             }
         } catch (_: Exception) {}
-        return "Rede Wi-Fi Conectada"
+        return "Rede Wi-Fi (2.4G / 5G)"
     }
 
     /**
@@ -145,12 +152,12 @@ class LanScannerManager(private val context: Context) {
      * across ports commonly open on smartphones (iOS/Android), tablets, routers, and smart devices.
      */
     suspend fun scanNetwork(
+        scanSubnets: List<String> = listOf(getSubnetPrefix()),
         fullScan: Boolean = true,
         onProgress: (current: Int, total: Int, device: LanDevice?) -> Unit
     ): List<LanDevice> = withContext(Dispatchers.IO) {
         acquireMulticastLock()
         val myIp = getLocalIpAddress()
-        val subnet = getSubnetPrefix()
         val realArp = readRealArpNeighbors()
         val discoveredMap = ConcurrentHashMap<String, LanDevice>()
 
@@ -160,7 +167,7 @@ class LanScannerManager(private val context: Context) {
                 val dev = probeRealHost(arpIp, mac)
                 if (dev != null) {
                     discoveredMap[dev.ipAddress] = dev
-                    onProgress(1, 254, dev)
+                    onProgress(1, 254 * scanSubnets.size, dev)
                 }
             }
         }
@@ -170,37 +177,50 @@ class LanScannerManager(private val context: Context) {
             discoverSsdpDevices(discoveredMap)
         } catch (_: Exception) {}
 
-        // 3. Full Parallel Subnet Sweep (1..254) with 40 concurrent workers
-        val totalHosts = if (fullScan) 254 else 60
-        val semaphore = Semaphore(40)
+        // 3. Full Parallel Subnet Sweep across specified subnets
+        val totalHostsPerSubnet = if (fullScan) 254 else 60
+        val totalScanTarget = totalHostsPerSubnet * scanSubnets.size
+        val semaphore = Semaphore(50)
+        var completedCount = 0
 
         coroutineScope {
-            val tasks = (1..totalHosts).map { suffix ->
-                async {
-                    val hostIp = "$subnet.$suffix"
-                    if (hostIp == myIp) {
-                        onProgress(suffix, totalHosts, null)
-                        return@async null
-                    }
+            val tasks = scanSubnets.flatMap { subnet ->
+                (1..totalHostsPerSubnet).map { suffix ->
+                    async {
+                        val hostIp = "$subnet.$suffix"
+                        if (hostIp == myIp) {
+                            synchronized(this@LanScannerManager) {
+                                completedCount++
+                                onProgress(completedCount, totalScanTarget, null)
+                            }
+                            return@async null
+                        }
 
-                    // If already detected via ARP/SSDP, skip probe
-                    if (discoveredMap.containsKey(hostIp)) {
-                        onProgress(suffix, totalHosts, discoveredMap[hostIp])
-                        return@async discoveredMap[hostIp]
-                    }
+                        // If already detected via ARP/SSDP, skip probe
+                        if (discoveredMap.containsKey(hostIp)) {
+                            synchronized(this@LanScannerManager) {
+                                completedCount++
+                                onProgress(completedCount, totalScanTarget, discoveredMap[hostIp])
+                            }
+                            return@async discoveredMap[hostIp]
+                        }
 
-                    val mac = realArp[hostIp] ?: "02:00:00:00:00:00"
-                    val device = semaphore.withPermit {
-                        probeRealHost(hostIp, mac)
-                    }
+                        val mac = realArp[hostIp] ?: "02:00:00:00:00:00"
+                        val device = semaphore.withPermit {
+                            probeRealHost(hostIp, mac)
+                        }
 
-                    if (device != null) {
-                        discoveredMap[device.ipAddress] = device
-                        onProgress(suffix, totalHosts, device)
-                    } else {
-                        onProgress(suffix, totalHosts, null)
+                        synchronized(this@LanScannerManager) {
+                            completedCount++
+                            if (device != null) {
+                                discoveredMap[device.ipAddress] = device
+                                onProgress(completedCount, totalScanTarget, device)
+                            } else {
+                                onProgress(completedCount, totalScanTarget, null)
+                            }
+                        }
+                        device
                     }
-                    device
                 }
             }
             tasks.awaitAll()
@@ -234,7 +254,7 @@ class LanScannerManager(private val context: Context) {
             val receivePacket = DatagramPacket(buffer, buffer.size)
             val startTime = System.currentTimeMillis()
 
-            while (System.currentTimeMillis() - startTime < 600) {
+            while (System.currentTimeMillis() - startTime < 500) {
                 try {
                     socket.receive(receivePacket)
                     val responderIp = receivePacket.address.hostAddress ?: continue
@@ -273,15 +293,16 @@ class LanScannerManager(private val context: Context) {
      * Probes real host using key TCP ports for iOS, Android, and IoT.
      */
     private fun probeRealHost(ip: String, mac: String): LanDevice? {
-        // Ports for Smartphones, Tablets, AirPlay, Cast, Web and Media
+        // Ports for Smartphones, Tablets, AirPlay, Cast, Web, Companion Server and Media
         val targetPorts = listOf(
+            8080,  // Companion Web / HTTP Alt
+            8888,  // Companion Fallback
             62078, // Apple Mobile Device / iTunes Sync (iOS iPhones/iPads)
             7000,  // Apple AirPlay (iPhones/iPads/Apple TV/Mac)
             8008,  // Google Cast / Android devices
             8009,  // Google Cast Secure
             5353,  // mDNS Multicast DNS
             5555,  // Android ADB
-            8080,  // HTTP Alt / Companion services
             80,    // Web / Router / IoT
             443,   // HTTPS
             5000,  // UPnP / AirPlay / NAS
@@ -298,7 +319,7 @@ class LanScannerManager(private val context: Context) {
             try {
                 val start = System.currentTimeMillis()
                 Socket().use { socket ->
-                    socket.connect(InetSocketAddress(ip, port), 90)
+                    socket.connect(InetSocketAddress(ip, port), 80)
                     isOnline = true
                     responseTime = System.currentTimeMillis() - start
                     openPortsFound.add(port)
@@ -312,7 +333,7 @@ class LanScannerManager(private val context: Context) {
             try {
                 val addr = InetAddress.getByName(ip)
                 val start = System.currentTimeMillis()
-                if (addr.isReachable(100)) {
+                if (addr.isReachable(90)) {
                     isOnline = true
                     responseTime = System.currentTimeMillis() - start
                 }
@@ -379,7 +400,7 @@ class LanScannerManager(private val context: Context) {
             isReachable = true,
             pingLatencyMs = if (responseTime > 0) responseTime else 12L,
             openPorts = if (openPortsFound.isNotEmpty()) openPortsFound else listOf(80),
-            isCompanionConnected = openPortsFound.contains(8080) || openPortsFound.contains(5555) || openPortsFound.contains(62078),
+            isCompanionConnected = openPortsFound.contains(8080) || openPortsFound.contains(8888) || openPortsFound.contains(5555) || openPortsFound.contains(62078),
             batteryPercent = null,
             signalDbm = -48
         )
