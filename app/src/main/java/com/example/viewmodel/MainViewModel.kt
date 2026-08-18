@@ -1,5 +1,6 @@
 package com.example.viewmodel
 
+import android.app.Activity
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -7,7 +8,7 @@ import com.example.data.AppDatabase
 import com.example.data.ContactsRepository
 import com.example.data.ExportManager
 import com.example.data.LanScannerManager
-import com.example.data.NfcGateManager
+import com.example.data.NativeNfcManager
 import com.example.data.PhotosRepository
 import com.example.data.RemoteDeviceManager
 import com.example.model.ContactItem
@@ -20,7 +21,6 @@ import com.example.model.PasswordCredential
 import com.example.model.PhotoItem
 import com.example.model.RemoteCommandLog
 import com.example.model.RemoteCommandType
-import com.example.util.SecurityUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,12 +28,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
 enum class AppTab(val title: String) {
-    NFC_RADAR("NFC & Gate"),
+    NFC_RADAR("NFC Radar"),
     LAN_DEVICES("Rede Wi-Fi"),
     CONTACTS("Contactos"),
     PHOTOS("Fotos"),
@@ -45,7 +44,7 @@ data class MainUiState(
     val currentTab: AppTab = AppTab.NFC_RADAR,
     val isNfcSupported: Boolean = true,
     val isNfcEnabled: Boolean = true,
-    val isNfcGateInstalled: Boolean = false,
+    val isNfcGateInstalled: Boolean = true, // Built-in native NFC support
     val isCapturingData: Boolean = false,
     val lastCapturedTime: Long? = null,
     
@@ -55,6 +54,8 @@ data class MainUiState(
     val subnetPrefix: String = "192.168.1",
     val isScanningLan: Boolean = false,
     val scanProgress: Float = 0f,
+    val scannedCount: Int = 0,
+    val totalToScan: Int = 254,
     val lanDevices: List<LanDevice> = emptyList(),
     val selectedLanDevice: LanDevice? = null,
     val remoteCommandLogs: List<RemoteCommandLog> = emptyList(),
@@ -100,7 +101,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val contactsRepo = ContactsRepository(application)
     private val photosRepo = PhotosRepository(application)
-    private val nfcGateManager = NfcGateManager(application)
+    val nativeNfcManager = NativeNfcManager(application)
     private val exportManager = ExportManager(application)
     private val lanScannerManager = LanScannerManager(application)
     private val remoteDeviceManager = RemoteDeviceManager(application)
@@ -113,10 +114,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
     init {
-        checkNfcAndGateState()
+        checkNfcState()
         observePasswords()
         initNetworkInfo()
-        startLanScan()
+        startLanScan(fullScan = true)
     }
 
     private fun initNetworkInfo() {
@@ -129,12 +130,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun checkNfcAndGateState() {
+    fun checkNfcState() {
         _uiState.update {
             it.copy(
-                isNfcSupported = nfcGateManager.isNfcSupported,
-                isNfcEnabled = nfcGateManager.isNfcEnabled,
-                isNfcGateInstalled = nfcGateManager.isNfcGateInstalled()
+                isNfcSupported = nativeNfcManager.isNfcSupported,
+                isNfcEnabled = nativeNfcManager.isNfcEnabled,
+                isNfcGateInstalled = true
+            )
+        }
+    }
+
+    fun startNativeNfcReader(activity: Activity) {
+        checkNfcState()
+        nativeNfcManager.enableReaderMode(activity) { event ->
+            handleDiscoveredNfcEvent(event)
+        }
+        nativeNfcManager.enableForegroundDispatch(activity)
+    }
+
+    fun stopNativeNfcReader(activity: Activity) {
+        nativeNfcManager.disableReaderMode(activity)
+        nativeNfcManager.disableForegroundDispatch(activity)
+    }
+
+    fun handleDiscoveredNfcEvent(event: NfcEvent) {
+        nativeNfcManager.triggerHapticFeedback()
+        _uiState.update { state ->
+            state.copy(
+                proximityAlertVisible = true,
+                proximityAlertTitle = "Proximidade NFC Detectada",
+                proximityAlertMessage = "Tag / Dispositivo NFC [${event.tagUid}] detectado por aproximação física.",
+                nfcEvents = listOf(event) + state.nfcEvents,
+                toastMessage = "NFC: ${event.payloadSummary.ifEmpty { event.tagUid }}"
             )
         }
     }
@@ -184,7 +211,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update {
             it.copy(
                 contacts = listOf(newContact) + it.contacts,
-                toastMessage = "Contacto sincronizado adicionado: $name"
+                toastMessage = "Contacto sincronizado: $name"
             )
         }
     }
@@ -298,21 +325,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- NFC Proximity & NFCGate Handlers ---
+    // --- NFC Proximity Handlers ---
     fun onNfcDeviceApproached(tagInfo: String? = null) {
-        nfcGateManager.triggerHapticFeedback()
+        nativeNfcManager.triggerHapticFeedback()
         val event = NfcEvent(
             id = UUID.randomUUID().toString(),
             title = "Aproximação NFC Detectada",
             description = tagInfo ?: "Dispositivo NFC emparelhado no alcance de leitura.",
-            eventType = NfcEventType.DEVICE_PROXIMITY,
+            eventType = NfcEventType.PROXIMITY_TOUCH,
             rawPayload = tagInfo
         )
         _uiState.update {
             it.copy(
                 proximityAlertVisible = true,
-                proximityAlertTitle = "Dispositivo NFC Aproximado",
-                proximityAlertMessage = "Dispositivo NFC detectado. Deseja abrir o NFCGate ou sincronizar dados?",
+                proximityAlertTitle = "Dispositivo NFC em Proximidade",
+                proximityAlertMessage = "Dispositivo NFC detectado no campo magnético (≤ 4cm).",
                 nfcEvents = listOf(event) + it.nfcEvents
             )
         }
@@ -320,29 +347,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissProximityAlert() {
         _uiState.update { it.copy(proximityAlertVisible = false) }
-    }
-
-    fun launchNfcGate() {
-        val event = NfcEvent(
-            id = UUID.randomUUID().toString(),
-            title = "NFCGate Acionado",
-            description = "Abertura da aplicação NFCGate.",
-            eventType = NfcEventType.NFCGATE_LAUNCHED
-        )
-        _uiState.update {
-            it.copy(
-                proximityAlertVisible = false,
-                nfcEvents = listOf(event) + it.nfcEvents
-            )
-        }
-
-        val launchIntent = nfcGateManager.getLaunchNfcGateIntent()
-        if (launchIntent != null) {
-            getApplication<Application>().startActivity(launchIntent)
-        } else {
-            val downloadIntent = nfcGateManager.getDownloadNfcGateIntent()
-            getApplication<Application>().startActivity(downloadIntent)
-        }
     }
 
     fun simulateNfcProximityTouch() {
@@ -414,20 +418,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- Wi-Fi LAN Handlers ---
-    fun startLanScan() {
+    fun startLanScan(fullScan: Boolean = true) {
         scanJob?.cancel()
         scanJob = viewModelScope.launch {
             initNetworkInfo()
+            val total = if (fullScan) 254 else 60
             _uiState.update {
                 it.copy(
                     isScanningLan = true,
-                    scanProgress = 0f
+                    scanProgress = 0f,
+                    scannedCount = 0,
+                    totalToScan = total
                 )
             }
 
-            val devices = lanScannerManager.scanNetwork { current, total, _ ->
+            val devices = lanScannerManager.scanNetwork(fullScan = fullScan) { current, totalHosts, _ ->
                 _uiState.update {
-                    it.copy(scanProgress = current.toFloat() / total.toFloat())
+                    it.copy(
+                        scanProgress = current.toFloat() / totalHosts.toFloat(),
+                        scannedCount = current,
+                        totalToScan = totalHosts
+                    )
                 }
             }
 
@@ -437,7 +448,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isScanningLan = false,
                     scanProgress = 1f,
                     toastMessage = if (devices.isEmpty())
-                        "Nenhum outro dispositivo detectado na sub-rede ${it.subnetPrefix}.*"
+                        "Varredura concluída. Nenhum outro host respondeu nas portas padrão."
                     else
                         "${devices.size} outro(s) dispositivo(s) real(is) detectado(s) na rede Wi-Fi!"
                 )
@@ -458,53 +469,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val connectedDevice = lanScannerManager.connectToManualIp(ip)
             _uiState.update {
+                val exists = it.lanDevices.any { d -> d.ipAddress == ip }
+                val updated = if (exists) it.lanDevices else it.lanDevices + connectedDevice
                 it.copy(
-                    lanDevices = listOf(connectedDevice) + it.lanDevices.filter { d -> d.ipAddress != ip },
-                    toastMessage = "Dispositivo $ip adicionado!"
+                    lanDevices = updated,
+                    selectedLanDevice = connectedDevice,
+                    toastMessage = "Dispositivo $ip adicionado."
                 )
             }
         }
     }
 
-    fun syncFromRemoteDevice(device: LanDevice) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(toastMessage = "A sincronizar dados com ${device.hostName} (${device.ipAddress})...") }
-            // Simulates receiving remote handshake confirmation from companion or companion port
-            kotlinx.coroutines.delay(800)
-            _uiState.update {
-                it.copy(
-                    toastMessage = "Sincronização com ${device.ipAddress} concluída com sucesso."
-                )
-            }
-        }
-    }
-
-    fun sendRemoteCommand(commandType: RemoteCommandType, extraParam: Any?) {
+    // --- Remote Control Commands ---
+    fun sendRemoteCommand(commandType: RemoteCommandType, extraValue: Any? = null) {
         val target = _uiState.value.selectedLanDevice ?: return
         viewModelScope.launch {
-            if (commandType == RemoteCommandType.DEVICE_VIBRATE) {
-                remoteDeviceManager.triggerVibration()
-            } else if (commandType == RemoteCommandType.SIREN_ALARM) {
-                remoteDeviceManager.playSirenSound()
-            } else if (commandType == RemoteCommandType.FLASHLIGHT_TOGGLE) {
-                remoteDeviceManager.toggleLocalFlashlight(!target.isFlashlightOn)
-            }
-
-            val (updatedDevice, log) = remoteDeviceManager.executeRemoteCommand(
-                targetDevice = target,
-                commandType = commandType,
-                extraParam = extraParam
-            )
-
+            val (updatedDevice, log) = remoteDeviceManager.executeRemoteCommand(target, commandType, extraValue)
             _uiState.update { state ->
-                val updatedList = state.lanDevices.map {
-                    if (it.id == updatedDevice.id) updatedDevice else it
+                val updatedDevices = state.lanDevices.map { dev ->
+                    if (dev.id == target.id) updatedDevice else dev
                 }
+
                 state.copy(
                     selectedLanDevice = updatedDevice,
-                    lanDevices = updatedList,
+                    lanDevices = updatedDevices,
                     remoteCommandLogs = listOf(log) + state.remoteCommandLogs,
-                    toastMessage = log.status
+                    toastMessage = "${commandType.displayName}: ${log.status}"
                 )
             }
         }

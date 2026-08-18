@@ -1,27 +1,20 @@
 package com.example
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.os.Build
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContactPage
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -50,9 +43,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.data.NfcGateManager
 import com.example.ui.AddOrEditPasswordDialog
 import com.example.ui.ContactsScreen
 import com.example.ui.ExportScreen
@@ -69,12 +60,10 @@ import com.example.viewmodel.MainViewModel
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
-    private lateinit var nfcGateManager: NfcGateManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        nfcGateManager = NfcGateManager(this)
 
         handleIncomingNfcIntent(intent)
 
@@ -82,7 +71,7 @@ class MainActivity : ComponentActivity() {
             MyApplicationTheme {
                 MainAppContent(
                     viewModel = viewModel,
-                    onLaunchNfcGate = { viewModel.launchNfcGate() }
+                    onTriggerNfcScan = { viewModel.simulateNfcProximityTouch() }
                 )
             }
         }
@@ -90,13 +79,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        nfcGateManager.enableForegroundDispatch(this)
-        viewModel.checkNfcAndGateState()
+        viewModel.startNativeNfcReader(this)
     }
 
     override fun onPause() {
         super.onPause()
-        nfcGateManager.disableForegroundDispatch(this)
+        viewModel.stopNativeNfcReader(this)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -118,9 +106,12 @@ class MainActivity : ComponentActivity() {
                 @Suppress("DEPRECATION")
                 intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
             }
-            val idHex = tag?.id?.joinToString(":") { String.format("%02X", it) } ?: "TAG_NFC"
-            val techList = tag?.techList?.joinToString(", ") { it.substringAfterLast(".") } ?: "NFC P2P"
-            viewModel.onNfcDeviceApproached("Dispositivo / Tag ID: $idHex | Tech: $techList")
+            if (tag != null) {
+                val event = viewModel.nativeNfcManager.processDiscoveredTag(tag)
+                viewModel.handleDiscoveredNfcEvent(event)
+            } else {
+                viewModel.onNfcDeviceApproached("Dispositivo NFC detectado no sensor.")
+            }
         }
     }
 }
@@ -129,7 +120,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainAppContent(
     viewModel: MainViewModel,
-    onLaunchNfcGate: () -> Unit
+    onTriggerNfcScan: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -153,10 +144,10 @@ fun MainAppContent(
                 title = {
                     Text(
                         text = when (uiState.currentTab) {
-                            AppTab.NFC_RADAR -> "NFCGate Sync & Vault"
+                            AppTab.NFC_RADAR -> "Radar NFC & Proximidade"
                             AppTab.LAN_DEVICES -> uiState.selectedLanDevice?.let { "Controlo: ${it.hostName}" } ?: "Rede Wi-Fi & Dispositivos"
-                            AppTab.CONTACTS -> "Contactos Captados"
-                            AppTab.PHOTOS -> "Galeria de Fotografias"
+                            AppTab.CONTACTS -> "Contactos Sincronizados"
+                            AppTab.PHOTOS -> "Galeria de Fotos Remotas"
                             AppTab.VAULT -> "Cofre de Passwords"
                             AppTab.EXPORT -> "Exportação Segura"
                         },
@@ -167,12 +158,12 @@ fun MainAppContent(
                 actions = {
                     if (uiState.currentTab == AppTab.NFC_RADAR) {
                         IconButton(
-                            onClick = onLaunchNfcGate,
-                            modifier = Modifier.testTag("topbar_btn_nfcgate")
+                            onClick = onTriggerNfcScan,
+                            modifier = Modifier.testTag("topbar_btn_nfc_pulse")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Nfc,
-                                contentDescription = "Abrir NFCGate",
+                                contentDescription = "Testar Proximidade NFC",
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -283,7 +274,6 @@ fun MainAppContent(
                 AppTab.NFC_RADAR -> {
                     NfcRadarScreen(
                         uiState = uiState,
-                        onLaunchNfcGate = onLaunchNfcGate,
                         onSimulateTouch = { viewModel.simulateNfcProximityTouch() },
                         onNavigateTab = { viewModel.setTab(it) }
                     )
@@ -300,7 +290,7 @@ fun MainAppContent(
                     } else {
                         LanDevicesScreen(
                             uiState = uiState,
-                            onStartScan = { viewModel.startLanScan() },
+                            onStartScan = { viewModel.startLanScan(fullScan = true) },
                             onStopScan = { viewModel.stopLanScan() },
                             onSelectDevice = { viewModel.selectLanDevice(it) },
                             onAddManualDevice = { ip, name, type -> viewModel.addManualLanDevice(ip, name, type) }
@@ -361,8 +351,6 @@ fun MainAppContent(
             ProximityAlertDialog(
                 title = uiState.proximityAlertTitle,
                 message = uiState.proximityAlertMessage,
-                isNfcGateInstalled = uiState.isNfcGateInstalled,
-                onLaunchNfcGate = onLaunchNfcGate,
                 onExportNow = {
                     viewModel.setTab(AppTab.EXPORT)
                     viewModel.performExport(andShare = true)

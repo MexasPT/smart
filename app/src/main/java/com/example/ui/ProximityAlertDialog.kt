@@ -1,6 +1,7 @@
 package com.example.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -8,9 +9,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Nfc
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -29,8 +29,6 @@ import androidx.compose.ui.unit.dp
 fun ProximityAlertDialog(
     title: String,
     message: String,
-    isNfcGateInstalled: Boolean,
-    onLaunchNfcGate: () -> Unit,
     onExportNow: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -41,7 +39,7 @@ fun ProximityAlertDialog(
                 imageVector = Icons.Default.Nfc,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(38.dp)
             )
         },
         title = {
@@ -57,23 +55,20 @@ fun ProximityAlertDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
-                    onClick = {
-                        onDismiss()
-                        onLaunchNfcGate()
-                    },
+                    onClick = onDismiss,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("dialog_btn_open_nfcgate"),
+                        .testTag("dialog_btn_ack_nfc"),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(
-                        imageVector = if (isNfcGateInstalled) Icons.Default.OpenInNew else Icons.Default.Download,
+                        imageVector = Icons.Default.CheckCircle,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (isNfcGateInstalled) "Abrir NFCGate Agora" else "Obter App NFCGate",
+                        text = "Manter Radar NFC Ativo",
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -92,7 +87,7 @@ fun ProximityAlertDialog(
                 ) {
                     Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Transferir / Exportar")
+                    Text("Exportar / Partilhar Dados")
                 }
             }
         },

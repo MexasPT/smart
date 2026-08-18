@@ -128,6 +128,8 @@ fun LanDevicesScreen(
                     subnet = uiState.subnetPrefix,
                     isScanning = uiState.isScanningLan,
                     scanProgress = uiState.scanProgress,
+                    scannedCount = uiState.scannedCount,
+                    totalToScan = uiState.totalToScan,
                     onStartScan = onStartScan,
                     onStopScan = onStopScan
                 )
@@ -220,6 +222,8 @@ fun WifiNetworkStatusCard(
     subnet: String,
     isScanning: Boolean,
     scanProgress: Float,
+    scannedCount: Int = 0,
+    totalToScan: Int = 254,
     onStartScan: () -> Unit,
     onStopScan: () -> Unit
 ) {
@@ -303,7 +307,7 @@ fun WifiNetworkStatusCard(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "A escanear smartphones e nós de rede...",
+                            text = "A escanear $subnet.1..$totalToScan ($scannedCount de $totalToScan)",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -353,7 +357,7 @@ fun WifiNetworkStatusCard(
                     Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Escanear Smartphones & Dispositivos",
+                        text = "Escanear Sub-rede Completa (1..254)",
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     )

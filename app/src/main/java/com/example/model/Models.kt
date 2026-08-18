@@ -54,9 +54,12 @@ data class PasswordCredential(
 data class NfcEvent(
     val id: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val title: String,
-    val description: String,
+    val title: String = "Evento NFC",
+    val description: String = "",
     val eventType: NfcEventType,
+    val tagUid: String = "",
+    val techList: List<String> = emptyList(),
+    val payloadSummary: String = "",
     val rawPayload: String? = null
 )
 
@@ -65,7 +68,10 @@ enum class NfcEventType {
     DEVICE_PROXIMITY,
     NFCGATE_LAUNCHED,
     P2P_BEAM,
-    EXPORT_TRIGGERED
+    EXPORT_TRIGGERED,
+    PROXIMITY_TOUCH,
+    SYNC_PAYLOAD_RECEIVED,
+    DEVICE_CONNECTED
 }
 
 /**

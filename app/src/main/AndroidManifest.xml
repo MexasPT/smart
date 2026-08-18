@@ -21,6 +21,7 @@
     <!-- Wi-Fi & Network Discovery Permissions -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <!-- Contacts Permissions -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
