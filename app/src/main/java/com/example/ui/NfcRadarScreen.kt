@@ -77,7 +77,6 @@ import java.util.Locale
 @Composable
 fun NfcRadarScreen(
     uiState: MainUiState,
-    onCaptureAll: () -> Unit,
     onLaunchNfcGate: () -> Unit,
     onSimulateTouch: () -> Unit,
     onNavigateTab: (AppTab) -> Unit,
@@ -107,7 +106,6 @@ fun NfcRadarScreen(
                 photosCount = uiState.photos.size,
                 passwordsCount = uiState.passwords.size,
                 lastCapturedTime = uiState.lastCapturedTime,
-                onCaptureAll = onCaptureAll,
                 onNavigateTab = onNavigateTab
             )
         }
@@ -365,7 +363,6 @@ fun CaptureDataHeroCard(
     photosCount: Int,
     passwordsCount: Int,
     lastCapturedTime: Long?,
-    onCaptureAll: () -> Unit,
     onNavigateTab: (AppTab) -> Unit
 ) {
     Card(
@@ -383,37 +380,23 @@ fun CaptureDataHeroCard(
             ) {
                 Column {
                     Text(
-                        text = "Centro de Captura de Dados",
+                        text = "Dados Sincronizados & Recebidos",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     if (lastCapturedTime != null) {
                         val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(lastCapturedTime))
                         Text(
-                            text = "Última atualização: às $timeStr",
+                            text = "Última sincronização: às $timeStr",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    }
-                }
-
-                Button(
-                    onClick = onCaptureAll,
-                    enabled = !isCapturing,
-                    modifier = Modifier.testTag("btn_capture_all_data")
-                ) {
-                    if (isCapturing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("A ler…")
                     } else {
-                        Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Captar Dados", fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Dados recebidos de outros smartphones",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }

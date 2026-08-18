@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,17 +31,16 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -48,24 +49,21 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -90,7 +88,8 @@ fun PasswordVaultScreen(
     var selectedCategory by remember { mutableStateOf<String?>(null) }
 
     val categories = remember(passwords) {
-        listOf("Todas") + passwords.map { it.category }.distinct()
+        val cats = passwords.map { it.category }.filter { it.isNotBlank() }.distinct()
+        if (cats.isEmpty()) listOf("Todas") else listOf("Todas") + cats
     }
 
     val filteredPasswords = remember(passwords, searchQuery, selectedCategory) {
@@ -109,128 +108,161 @@ fun PasswordVaultScreen(
     val allSelected = passwords.isNotEmpty() && selectedCount == passwords.size
 
     Box(modifier = modifier.fillMaxSize()) {
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Security Info Card
-            SecurityInfoBanner()
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Search Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("vault_search_bar"),
-                placeholder = { Text("Pesquisar contas, usernames ou serviços…") },
-                leadingIcon = {
-                    Icon(imageVector = Icons.Default.Search, contentDescription = null)
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { onSearchQueryChange("") }) {
-                            Icon(imageVector = Icons.Default.Clear, contentDescription = "Limpar")
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp)
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Category filter chips
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                categories.take(4).forEach { cat ->
-                    val isSelected = (selectedCategory == null && cat == "Todas") || selectedCategory == cat
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { selectedCategory = if (cat == "Todas") null else cat },
-                        label = { Text(cat, fontSize = 12.sp) },
-                        leadingIcon = if (isSelected) {
-                            { Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp)) }
-                        } else null
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Actions Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "$selectedCount de ${passwords.size} credenciais no cofre",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                TextButton(
-                    onClick = { onSelectAll(!allSelected) },
-                    modifier = Modifier.testTag("btn_select_all_passwords")
-                ) {
-                    Text(if (allSelected) "Desmarcar" else "Selecionar Todas")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            if (filteredPasswords.isEmpty()) {
-                Box(
+            item {
+                Spacer(modifier = Modifier.height(4.dp))
+                // Search Bar
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
+                        .testTag("vault_search_bar"),
+                    placeholder = { Text("Pesquisar contas, usernames ou categorias…") },
+                    leadingIcon = {
+                        Icon(imageVector = Icons.Default.Search, contentDescription = null)
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { onSearchQueryChange("") }) {
+                                Icon(imageVector = Icons.Default.Clear, contentDescription = "Limpar")
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp)
+                )
+            }
+
+            // Categories Filter Row
+            if (categories.size > 1) {
+                item {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(categories) { cat ->
+                            val isSelected = (selectedCategory == null && cat == "Todas") || selectedCategory == cat
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedCategory = if (cat == "Todas") null else cat },
+                                label = { Text(cat, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                leadingIcon = if (isSelected) {
+                                    { Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                                } else null
+                            )
+                        }
+                    }
+                }
+            }
+
+            // List Header with count and select all toggle
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            modifier = Modifier.size(56.dp),
-                            tint = MaterialTheme.colorScheme.outline
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Nenhuma credencial encontrada.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Text(
+                        text = if (passwords.isEmpty()) "Cofre de Credenciais Vazio" else "${filteredPasswords.size} credenciais encontradas",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    if (passwords.isNotEmpty()) {
+                        TextButton(
+                            onClick = { onSelectAll(!allSelected) },
+                            modifier = Modifier.testTag("btn_select_all_passwords")
+                        ) {
+                            Text(if (allSelected) "Desmarcar todas" else "Selecionar todas ($selectedCount)")
+                        }
+                    }
+                }
+            }
+
+            // Empty state
+            if (filteredPasswords.isEmpty()) {
+                item {
+                    ElevatedCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(28.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = if (passwords.isEmpty()) "Nenhuma credencial no cofre" else "Nenhum resultado para a pesquisa",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = if (passwords.isEmpty()) "Guarde aqui as credenciais sincronizadas de outros dispositivos ou adicione novas senhas manualmente." else "Tente outros termos de pesquisa.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            if (passwords.isEmpty()) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = { onOpenAddDialog(null) },
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Adicionar Credencial")
+                                }
+                            }
+                        }
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(filteredPasswords, key = { it.id }) { item ->
-                        PasswordCard(
-                            item = item,
-                            onToggle = { onToggleSelect(item.id) },
-                            onEdit = { onOpenAddDialog(item) },
-                            onDelete = { onDeletePassword(item) }
-                        )
-                    }
-                    item {
-                        Spacer(modifier = Modifier.height(80.dp)) // Space for FAB
-                    }
+                // List of password items
+                items(filteredPasswords, key = { it.id }) { item ->
+                    CleanPasswordItemCard(
+                        item = item,
+                        onToggle = { onToggleSelect(item.id) },
+                        onEdit = { onOpenAddDialog(item) },
+                        onDelete = { onDeletePassword(item) }
+                    )
+                }
+
+                item {
+                    Spacer(modifier = Modifier.height(84.dp)) // Space for FAB
                 }
             }
         }
 
-        // Floating Action Button to Add New Password
+        // Floating Action Button
         FloatingActionButton(
             onClick = { onOpenAddDialog(null) },
             modifier = Modifier
@@ -240,7 +272,10 @@ fun PasswordVaultScreen(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary
         ) {
-            Row(modifier = Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(imageVector = Icons.Default.Add, contentDescription = "Adicionar Credencial")
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("Adicionar Senha", fontWeight = FontWeight.Bold)
@@ -250,33 +285,7 @@ fun PasswordVaultScreen(
 }
 
 @Composable
-fun SecurityInfoBanner() {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f)
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.Shield,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.tertiary,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = "Cofre cifrado com AES-256 e protegido por Room DB. Pode gerir, adicionar palavras-passe e exportar em segurança.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onTertiaryContainer
-            )
-        }
-    }
-}
-
-@Composable
-fun PasswordCard(
+fun CleanPasswordItemCard(
     item: PasswordCredential,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
@@ -285,75 +294,81 @@ fun PasswordCard(
     val context = LocalContext.current
     var isPasswordVisible by remember { mutableStateOf(false) }
 
-    val strengthScore = remember(item.encryptedPassword) {
-        SecurityUtils.evaluateStrength(item.encryptedPassword)
-    }
-
-    val strengthColor = when (strengthScore) {
-        1 -> Color(0xFFE53935)
-        2 -> Color(0xFFFB8C00)
-        3 -> Color(0xFF43A047)
-        else -> Color(0xFF00897B)
-    }
-
-    val strengthText = when (strengthScore) {
-        1 -> "Fraca"
-        2 -> "Média"
-        3 -> "Forte"
-        else -> "Muito Forte"
-    }
-
-    Card(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
+        colors = CardDefaults.elevatedCardColors(
             containerColor = if (item.isSelected)
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
             else MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Header Row: Category Badge + Title + Actions
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header: Icon + Title + Category + Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = item.category,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        Icon(
+                            imageVector = Icons.Default.Key,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = item.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Text(
+                                text = item.category.ifBlank { "Geral" },
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
                         onClick = onEdit,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Icon(imageVector = Icons.Default.Edit, contentDescription = "Editar", modifier = Modifier.size(18.dp))
                     }
                     IconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(36.dp)
                     ) {
-                        Icon(imageVector = Icons.Default.Delete, contentDescription = "Eliminar", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Eliminar",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.error
+                        )
                     }
                     Checkbox(
                         checked = item.isSelected,
@@ -362,52 +377,66 @@ fun PasswordCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Username Field with Quick Copy
+            // Username Section
             Surface(
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(10.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(text = "Utilizador", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                        Text(text = item.username, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                    }
-                    IconButton(
-                        onClick = {
-                            val clip = ClipData.newPlainText("Username", item.username)
-                            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            cm.setPrimaryClip(clip)
-                            Toast.makeText(context, "Utilizador copiado!", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "Copiar username", modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Password Field with Reveal & Copy
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "Palavra-passe", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                        Text(
+                            text = "Utilizador / Email",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = item.username.ifBlank { "(sem utilizador)" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    if (item.username.isNotBlank()) {
+                        IconButton(
+                            onClick = {
+                                val clip = ClipData.newPlainText("Username", item.username)
+                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                cm.setPrimaryClip(clip)
+                                Toast.makeText(context, "Utilizador copiado!", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "Copiar utilizador", modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Password Section
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Palavra-passe",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         Text(
                             text = if (isPasswordVisible) item.encryptedPassword else "••••••••••••••••",
                             style = MaterialTheme.typography.bodyMedium,
@@ -415,17 +444,19 @@ fun PasswordCard(
                             fontWeight = FontWeight.Bold
                         )
                     }
+
                     Row {
                         IconButton(
                             onClick = { isPasswordVisible = !isPasswordVisible },
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
                                 imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                 contentDescription = "Mostrar senha",
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
+
                         IconButton(
                             onClick = {
                                 val clip = ClipData.newPlainText("Password", item.encryptedPassword)
@@ -433,44 +464,20 @@ fun PasswordCard(
                                 cm.setPrimaryClip(clip)
                                 Toast.makeText(context, "Palavra-passe copiada!", Toast.LENGTH_SHORT).show()
                             },
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "Copiar senha", modifier = Modifier.size(16.dp))
+                            Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "Copiar senha", modifier = Modifier.size(18.dp))
                         }
                     }
                 }
             }
 
-            // Strength bar
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LinearProgressIndicator(
-                    progress = { strengthScore / 4f },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(4.dp),
-                    color = strengthColor,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = "Força: $strengthText",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = strengthColor,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
             if (item.notes.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "Nota: ${item.notes}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.outline
                 )
             }
         }
@@ -486,7 +493,7 @@ fun AddOrEditPasswordDialog(
     var title by remember { mutableStateOf(initialCredential?.title ?: "") }
     var username by remember { mutableStateOf(initialCredential?.username ?: "") }
     var password by remember { mutableStateOf(initialCredential?.encryptedPassword ?: "") }
-    var category by remember { mutableStateOf(initialCredential?.category ?: "Email & Cloud") }
+    var category by remember { mutableStateOf(initialCredential?.category ?: "Geral") }
     var notes by remember { mutableStateOf(initialCredential?.notes ?: "") }
 
     var passLength by remember { mutableFloatStateOf(16f) }
@@ -562,7 +569,7 @@ fun AddOrEditPasswordDialog(
                     )
                 }
 
-                // Password Generator Box
+                // Password Generator Slider
                 item {
                     Surface(
                         shape = RoundedCornerShape(10.dp),

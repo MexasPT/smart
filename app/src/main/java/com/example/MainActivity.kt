@@ -134,32 +134,6 @@ fun MainAppContent(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Permissions launchers
-    val contactsPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        viewModel.onContactsPermissionResult(isGranted)
-    }
-
-    val photosPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        viewModel.onPhotosPermissionResult(isGranted)
-    }
-
-    // Check permissions on start
-    LaunchedEffect(Unit) {
-        // Request Contacts Permission
-        contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
-        
-        // Request Storage/Photos Permission
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            photosPermissionLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES)
-        } else {
-            photosPermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-    }
-
     LaunchedEffect(uiState.toastMessage) {
         uiState.toastMessage?.let { msg ->
             snackbarHostState.showSnackbar(msg)
@@ -309,7 +283,6 @@ fun MainAppContent(
                 AppTab.NFC_RADAR -> {
                     NfcRadarScreen(
                         uiState = uiState,
-                        onCaptureAll = { viewModel.captureAllData() },
                         onLaunchNfcGate = onLaunchNfcGate,
                         onSimulateTouch = { viewModel.simulateNfcProximityTouch() },
                         onNavigateTab = { viewModel.setTab(it) }
@@ -341,7 +314,10 @@ fun MainAppContent(
                         onSearchQueryChange = { viewModel.updateContactsSearchQuery(it) },
                         onToggleSelect = { viewModel.toggleContactSelection(it) },
                         onSelectAll = { viewModel.selectAllContacts(it) },
-                        onRefresh = { viewModel.captureAllData() }
+                        onAddContact = { name, phone, email, note ->
+                            viewModel.addManualContact(name, phone, email, note)
+                        },
+                        onClearContacts = { viewModel.clearSyncedContacts() }
                     )
                 }
                 AppTab.PHOTOS -> {
@@ -351,7 +327,7 @@ fun MainAppContent(
                         onSearchQueryChange = { viewModel.updatePhotosSearchQuery(it) },
                         onToggleSelect = { viewModel.togglePhotoSelection(it) },
                         onSelectAll = { viewModel.selectAllPhotos(it) },
-                        onRefresh = { viewModel.captureAllData() }
+                        onClearPhotos = { viewModel.clearSyncedPhotos() }
                     )
                 }
                 AppTab.VAULT -> {
@@ -387,7 +363,6 @@ fun MainAppContent(
                 message = uiState.proximityAlertMessage,
                 isNfcGateInstalled = uiState.isNfcGateInstalled,
                 onLaunchNfcGate = onLaunchNfcGate,
-                onCaptureNow = { viewModel.captureAllData() },
                 onExportNow = {
                     viewModel.setTab(AppTab.EXPORT)
                     viewModel.performExport(andShare = true)

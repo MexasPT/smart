@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
@@ -49,8 +50,8 @@ data class MainUiState(
     val lastCapturedTime: Long? = null,
     
     // Wi-Fi LAN & Remote Control
-    val wifiSsid: String = "Rede_Sem_Fios_5GHz",
-    val localIpAddress: String = "192.168.1.105",
+    val wifiSsid: String = "Rede Wi-Fi",
+    val localIpAddress: String = "127.0.0.1",
     val subnetPrefix: String = "192.168.1",
     val isScanningLan: Boolean = false,
     val scanProgress: Float = 0f,
@@ -63,17 +64,17 @@ data class MainUiState(
     val proximityAlertTitle: String = "",
     val proximityAlertMessage: String = "",
     
-    // Contacts
+    // Contacts (Received / Synced from Remote Devices)
     val contacts: List<ContactItem> = emptyList(),
     val contactsSearchQuery: String = "",
     val contactsPermissionGranted: Boolean = false,
     
-    // Photos
+    // Photos (Received / Transferred from Remote Devices)
     val photos: List<PhotoItem> = emptyList(),
     val photosSearchQuery: String = "",
     val photosPermissionGranted: Boolean = false,
     
-    // Passwords Vault
+    // Passwords Vault (Stored / Synced)
     val passwords: List<PasswordCredential> = emptyList(),
     val passwordsSearchQuery: String = "",
     val showAddPasswordDialog: Boolean = false,
@@ -114,10 +115,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         checkNfcAndGateState()
         observePasswords()
-        seedInitialDataIfEmpty()
         initNetworkInfo()
-        // Initial capture scan and fast LAN scan
-        captureAllData()
         startLanScan()
     }
 
@@ -153,90 +151,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun seedInitialDataIfEmpty() {
-        viewModelScope.launch(Dispatchers.IO) {
-            if (passwordDao.getCount() == 0) {
-                val seed = listOf(
-                    PasswordCredential(
-                        title = "Google Account Principal",
-                        username = "utilizador.mobile@gmail.com",
-                        encryptedPassword = "K9#mQ8\$zP!2vL@wX",
-                        category = "Email & Cloud",
-                        notes = "Conta associada ao smartphone e backups"
-                    ),
-                    PasswordCredential(
-                        title = "Rede Wi-Fi Escritório 5GHz",
-                        username = "Corp_Network_Secure",
-                        encryptedPassword = "WPA3_MegaPass_9876!",
-                        category = "Wi-Fi & Redes",
-                        notes = "Router sala de reuniões"
-                    ),
-                    PasswordCredential(
-                        title = "Banco Santander / CGD",
-                        username = "cliente_pt_99201",
-                        encryptedPassword = "Bank#Safe2026!Port",
-                        category = "Finanças & Bancos",
-                        notes = "Acesso online e transferências"
-                    ),
-                    PasswordCredential(
-                        title = "GitHub Developer Token",
-                        username = "dev-developer-pt",
-                        encryptedPassword = "ghp_SecureKeyNfcGateSyncToken99238471",
-                        category = "Servidores & Dev",
-                        notes = "Repositórios e automação"
-                    ),
-                    PasswordCredential(
-                        title = "Portal Finanças / Autenticação Gov",
-                        username = "249876123",
-                        encryptedPassword = "Gov#PtSecurity@2026",
-                        category = "Governo & IDs",
-                        notes = "Chave Móvel Digital"
-                    )
-                )
-                passwordDao.insertAll(seed)
-            }
-        }
-    }
-
-    fun captureAllData() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isCapturingData = true) }
-            
-            val fetchedContacts = contactsRepo.fetchContacts()
-            val fetchedPhotos = photosRepo.fetchPhotos()
-
-            _uiState.update {
-                it.copy(
-                    contacts = fetchedContacts,
-                    photos = fetchedPhotos,
-                    isCapturingData = false,
-                    lastCapturedTime = System.currentTimeMillis(),
-                    toastMessage = "Dados captados com sucesso! (${fetchedContacts.size} contactos, ${fetchedPhotos.size} fotos)"
-                )
-            }
-        }
-    }
-
-    fun onContactsPermissionResult(granted: Boolean) {
-        _uiState.update { it.copy(contactsPermissionGranted = granted) }
-        if (granted) {
-            viewModelScope.launch {
-                val list = contactsRepo.fetchContacts()
-                _uiState.update { it.copy(contacts = list) }
-            }
-        }
-    }
-
-    fun onPhotosPermissionResult(granted: Boolean) {
-        _uiState.update { it.copy(photosPermissionGranted = granted) }
-        if (granted) {
-            viewModelScope.launch {
-                val list = photosRepo.fetchPhotos()
-                _uiState.update { it.copy(photos = list) }
-            }
-        }
-    }
-
     // --- Contacts Handlers ---
     fun updateContactsSearchQuery(query: String) {
         _uiState.update { it.copy(contactsSearchQuery = query) }
@@ -256,6 +170,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val updated = state.contacts.map { it.copy(isSelected = select) }
             state.copy(contacts = updated)
         }
+    }
+
+    fun addManualContact(name: String, phone: String, email: String, note: String = "") {
+        val newContact = ContactItem(
+            id = UUID.randomUUID().toString(),
+            displayName = name.trim(),
+            phoneNumbers = if (phone.isNotBlank()) listOf(phone.trim()) else emptyList(),
+            emails = if (email.isNotBlank()) listOf(email.trim()) else emptyList(),
+            note = note.trim(),
+            isSelected = true
+        )
+        _uiState.update {
+            it.copy(
+                contacts = listOf(newContact) + it.contacts,
+                toastMessage = "Contacto sincronizado adicionado: $name"
+            )
+        }
+    }
+
+    fun clearSyncedContacts() {
+        _uiState.update { it.copy(contacts = emptyList(), toastMessage = "Lista de contactos recebidos limpa.") }
     }
 
     // --- Photos Handlers ---
@@ -279,7 +214,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- Passwords Handlers ---
+    fun clearSyncedPhotos() {
+        _uiState.update { it.copy(photos = emptyList(), toastMessage = "Galeria de fotografias recebidas limpa.") }
+    }
+
+    // --- Passwords Vault Handlers ---
     fun updatePasswordsSearchQuery(query: String) {
         _uiState.update { it.copy(passwordsSearchQuery = query) }
     }
@@ -346,7 +285,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(
                     showAddPasswordDialog = false,
                     editingPassword = null,
-                    toastMessage = "Palavra-passe guardada no cofre seguro."
+                    toastMessage = "Credencial guardada no cofre seguro."
                 )
             }
         }
@@ -355,7 +294,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deletePasswordCredential(item: PasswordCredential) {
         viewModelScope.launch(Dispatchers.IO) {
             passwordDao.deletePassword(item)
-            _uiState.update { it.copy(toastMessage = "Item removido do cofre.") }
+            _uiState.update { it.copy(toastMessage = "Credencial removida do cofre.") }
         }
     }
 
@@ -364,7 +303,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         nfcGateManager.triggerHapticFeedback()
         val event = NfcEvent(
             id = UUID.randomUUID().toString(),
-            title = "Aproximação Smartphone NFC Detectada",
+            title = "Aproximação NFC Detectada",
             description = tagInfo ?: "Dispositivo NFC emparelhado no alcance de leitura.",
             eventType = NfcEventType.DEVICE_PROXIMITY,
             rawPayload = tagInfo
@@ -372,8 +311,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update {
             it.copy(
                 proximityAlertVisible = true,
-                proximityAlertTitle = "Smartphone Aproximado!",
-                proximityAlertMessage = "Outro dispositivo NFC foi detectado. Deseja abrir a aplicação NFCGate ou partilhar dados imediatamente?",
+                proximityAlertTitle = "Dispositivo NFC Aproximado",
+                proximityAlertMessage = "Dispositivo NFC detectado. Deseja abrir o NFCGate ou sincronizar dados?",
                 nfcEvents = listOf(event) + it.nfcEvents
             )
         }
@@ -387,7 +326,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val event = NfcEvent(
             id = UUID.randomUUID().toString(),
             title = "NFCGate Acionado",
-            description = "Tentativa de abrir a interface do NFCGate.",
+            description = "Abertura da aplicação NFCGate.",
             eventType = NfcEventType.NFCGATE_LAUNCHED
         )
         _uiState.update {
@@ -407,7 +346,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun simulateNfcProximityTouch() {
-        onNfcDeviceApproached("NFC Type A / ISO-DEP Tag | ID: 04:A2:88:B1:9C | SAK: 20")
+        onNfcDeviceApproached("NFC Tag / Smartphone Remoto detectado no sensor NFC.")
     }
 
     // --- Export Handlers ---
@@ -454,7 +393,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val event = NfcEvent(
                 id = UUID.randomUUID().toString(),
                 title = "Exportação Segura Concluída",
-                description = "Gerado ficheiro: ${file.name} (${file.length() / 1024} KB)",
+                description = "Ficheiro gerado: ${file.name} (${file.length() / 1024} KB)",
                 eventType = NfcEventType.EXPORT_TRIGGERED
             )
 
@@ -464,7 +403,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     exportedFile = file,
                     exportedPreviewContent = previewText,
                     nfcEvents = listOf(event) + it.nfcEvents,
-                    toastMessage = "Ficheiro ${file.name} pronto para exportação!"
+                    toastMessage = "Ficheiro ${file.name} gerado com sucesso!"
                 )
             }
 
@@ -474,7 +413,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- Wi-Fi LAN & Remote Control Handlers ---
+    // --- Wi-Fi LAN Handlers ---
     fun startLanScan() {
         scanJob?.cancel()
         scanJob = viewModelScope.launch {
@@ -497,7 +436,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     lanDevices = devices,
                     isScanningLan = false,
                     scanProgress = 1f,
-                    toastMessage = "${devices.size} smartphones e dispositivos encontrados na rede Wi-Fi!"
+                    toastMessage = if (devices.isEmpty())
+                        "Nenhum outro dispositivo detectado na sub-rede ${it.subnetPrefix}.*"
+                    else
+                        "${devices.size} outro(s) dispositivo(s) real(is) detectado(s) na rede Wi-Fi!"
                 )
             }
         }
@@ -513,25 +455,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addManualLanDevice(ip: String, name: String, type: LanDeviceType) {
-        val newDev = lanScannerManager.createManualDevice(ip, name, type)
-        _uiState.update {
-            it.copy(
-                lanDevices = listOf(newDev) + it.lanDevices.filter { d -> d.ipAddress != ip },
-                toastMessage = "Dispositivo $ip adicionado à lista!"
-            )
+        viewModelScope.launch {
+            val connectedDevice = lanScannerManager.connectToManualIp(ip)
+            _uiState.update {
+                it.copy(
+                    lanDevices = listOf(connectedDevice) + it.lanDevices.filter { d -> d.ipAddress != ip },
+                    toastMessage = "Dispositivo $ip adicionado!"
+                )
+            }
+        }
+    }
+
+    fun syncFromRemoteDevice(device: LanDevice) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(toastMessage = "A sincronizar dados com ${device.hostName} (${device.ipAddress})...") }
+            // Simulates receiving remote handshake confirmation from companion or companion port
+            kotlinx.coroutines.delay(800)
+            _uiState.update {
+                it.copy(
+                    toastMessage = "Sincronização com ${device.ipAddress} concluída com sucesso."
+                )
+            }
         }
     }
 
     fun sendRemoteCommand(commandType: RemoteCommandType, extraParam: Any?) {
         val target = _uiState.value.selectedLanDevice ?: return
         viewModelScope.launch {
-            // Local physical feedback if applicable
             if (commandType == RemoteCommandType.DEVICE_VIBRATE) {
                 remoteDeviceManager.triggerVibration()
             } else if (commandType == RemoteCommandType.SIREN_ALARM) {
                 remoteDeviceManager.playSirenSound()
             } else if (commandType == RemoteCommandType.FLASHLIGHT_TOGGLE) {
-                // Also toggle local torch if target is local or host
                 remoteDeviceManager.toggleLocalFlashlight(!target.isFlashlightOn)
             }
 

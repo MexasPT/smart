@@ -22,17 +22,15 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,9 +57,6 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.model.PhotoItem
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @Composable
 fun PhotosScreen(
@@ -70,13 +65,14 @@ fun PhotosScreen(
     onSearchQueryChange: (String) -> Unit,
     onToggleSelect: (Long) -> Unit,
     onSelectAll: (Boolean) -> Unit,
-    onRefresh: () -> Unit,
+    onClearPhotos: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
 
     val albums = remember(photos) {
-        listOf("Todos") + photos.map { it.bucketName }.distinct()
+        val list = photos.map { it.bucketName }.distinct()
+        if (list.isEmpty()) listOf("Todos") else listOf("Todos") + list
     }
 
     val filteredPhotos = remember(photos, searchQuery, selectedAlbum) {
@@ -99,14 +95,14 @@ fun PhotosScreen(
     ) {
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Search Bar
+        // Search bar
         OutlinedTextField(
             value = searchQuery,
             onValueChange = onSearchQueryChange,
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("photos_search_bar"),
-            placeholder = { Text("Filtrar fotos por nome ou álbum…") },
+            placeholder = { Text("Pesquisar fotografias recebidas…") },
             leadingIcon = {
                 Icon(imageVector = Icons.Default.Search, contentDescription = null)
             },
@@ -118,32 +114,28 @@ fun PhotosScreen(
                 }
             },
             singleLine = true,
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(14.dp)
         )
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Album filter chips
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            albums.take(4).forEach { album ->
-                val isSelected = (selectedAlbum == null && album == "Todos") || selectedAlbum == album
-                FilterChip(
-                    selected = isSelected,
-                    onClick = {
-                        selectedAlbum = if (album == "Todos") null else album
-                    },
-                    label = { Text(album, fontSize = 12.sp) },
-                    leadingIcon = if (isSelected) {
-                        { Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp)) }
-                    } else null
-                )
+        // Album Filter Chips
+        if (albums.size > 1) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                albums.forEach { album ->
+                    val isSelected = (selectedAlbum == null && album == "Todos") || selectedAlbum == album
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { selectedAlbum = if (album == "Todos") null else album },
+                        label = { Text(album, fontSize = 12.sp) }
+                    )
+                }
             }
+            Spacer(modifier = Modifier.height(4.dp))
         }
-
-        Spacer(modifier = Modifier.height(4.dp))
 
         // Actions Header
         Row(
@@ -152,22 +144,25 @@ fun PhotosScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "$selectedCount de ${photos.size} fotos prontas para exportar",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = if (photos.isEmpty()) "Nenhuma fotografia recebida" else "$selectedCount de ${photos.size} fotos selecionadas",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
 
             Row {
-                TextButton(
-                    onClick = { onSelectAll(!allSelected) },
-                    modifier = Modifier.testTag("btn_select_all_photos")
-                ) {
-                    Text(if (allSelected) "Desmarcar" else "Selecionar Todas")
-                }
-
-                IconButton(onClick = onRefresh) {
-                    Icon(imageVector = Icons.Default.Refresh, contentDescription = "Atualizar fotos")
+                if (photos.isNotEmpty()) {
+                    TextButton(onClick = onClearPhotos) {
+                        Icon(imageVector = Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Limpar", color = MaterialTheme.colorScheme.error)
+                    }
+                    TextButton(
+                        onClick = { onSelectAll(!allSelected) },
+                        modifier = Modifier.testTag("btn_select_all_photos")
+                    ) {
+                        Text(if (allSelected) "Desmarcar" else "Todas")
+                    }
                 }
             }
         }
@@ -175,34 +170,55 @@ fun PhotosScreen(
         Spacer(modifier = Modifier.height(4.dp))
 
         if (filteredPhotos.isEmpty()) {
-            Box(
+            ElevatedCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
+                    .padding(vertical = 24.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.PhotoLibrary,
-                        contentDescription = null,
-                        modifier = Modifier.size(56.dp),
-                        tint = MaterialTheme.colorScheme.outline
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PhotoLibrary,
+                            contentDescription = null,
+                            modifier = Modifier.size(28.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = "Nenhuma fotografia encontrada.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = if (photos.isEmpty()) "Galeria de Fotos Remotas Vazia" else "Nenhuma foto encontrada",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = if (photos.isEmpty()) "O dispositivo onde a app está instalada não exibe fotos locais. Apenas exibe fotografias transferidas ou sincronizadas de outros telemóveis." else "Tente outros termos de pesquisa.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
             }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 150.dp),
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                columns = GridCells.Adaptive(minSize = 105.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(filteredPhotos, key = { it.id }) { photo ->
                     PhotoGridCard(
@@ -220,92 +236,59 @@ fun PhotoGridCard(
     photo: PhotoItem,
     onToggle: () -> Unit
 ) {
-    val context = LocalContext.current
-    val dateStr = remember(photo.dateTaken) {
-        if (photo.dateTaken > 0) {
-            SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(photo.dateTaken))
-        } else "Recente"
-    }
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .aspectRatio(1f)
             .clickable { onToggle() },
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1.1f)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(photo.uri)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = photo.displayName,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
+        Box(modifier = Modifier.fillMaxSize()) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(photo.uri)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = photo.displayName,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
 
-                // Album Badge top-left
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color.Black.copy(alpha = 0.65f),
-                    modifier = Modifier
-                        .padding(6.dp)
-                        .align(Alignment.TopStart)
-                ) {
-                    Text(
-                        text = photo.bucketName,
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-
-                // Checkbox indicator top-right
+            // Selection Indicator
+            if (photo.isSelected) {
                 Box(
                     modifier = Modifier
-                        .padding(6.dp)
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.35f))
+                        .border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                )
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Selecionado",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
                         .align(Alignment.TopEnd)
-                ) {
-                    Checkbox(
-                        checked = photo.isSelected,
-                        onCheckedChange = { onToggle() }
-                    )
-                }
+                        .padding(6.dp)
+                        .size(24.dp)
+                )
             }
 
-            Column(modifier = Modifier.padding(8.dp)) {
+            // Bottom name label
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter),
+                color = Color.Black.copy(alpha = 0.6f)
+            ) {
                 Text(
                     text = photo.displayName,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                    fontSize = 10.sp
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = photo.sizeFormatted,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = dateStr,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                }
             }
         }
     }
